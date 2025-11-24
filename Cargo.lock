@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "custom-ssh-server"
+name = "tailtalk"
 version = "0.1.0"
