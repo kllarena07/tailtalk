@@ -107,9 +107,10 @@ impl App {
         let lines_needed = std::cmp::max(1, (text_width + available_width - 1) / available_width);
         let input_area_height = std::cmp::max(3, lines_needed); // Minimum 3 lines for input area
         let total_input_height = input_area_height + 3; // Input area + info area
-        
+
         let [content_area, input_parent] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(total_input_height)]).areas(main_area);
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(total_input_height)])
+                .areas(main_area);
 
         let [input_area_1, input_area_2] =
             Layout::vertical([Constraint::Length(input_area_height), Constraint::Length(3)])
@@ -197,7 +198,15 @@ impl App {
                 height: content_area.height - 1,
             },
         );
-        frame.render_widget(input_paragraph, input_area_1);
+        frame.render_widget(
+            input_paragraph,
+            Rect {
+                x: input_area_1.x + 1,
+                y: input_area_1.y,
+                width: input_area_1.width.saturating_sub(1),
+                height: input_area_1.height,
+            },
+        );
         frame.render_widget(input_info, input_area_2);
         frame.render_widget(version_control, vc_area);
         frame.render_widget(conn_info, conn_area);
