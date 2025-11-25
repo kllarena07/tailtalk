@@ -89,10 +89,10 @@ impl App {
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
 
         let [content_area, input_parent] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(5)]).areas(main_area);
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(6)]).areas(main_area);
 
         let [input_area_1, input_area_2] =
-            Layout::vertical([Constraint::Length(2), Constraint::Length(3)]).areas(input_parent);
+            Layout::vertical([Constraint::Length(3), Constraint::Length(3)]).areas(input_parent);
 
         let version_control = Line::from(Span::styled(
             " tailtalk v0.0.1 ",
