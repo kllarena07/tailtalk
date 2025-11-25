@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Cell, Padding, Paragraph, Row, Table, TableState, Wrap},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 use std::{io, sync::mpsc, thread, time::Duration};
 
@@ -16,21 +16,9 @@ fn main() -> io::Result<()> {
         input_text: String::new(),
         cursor_visible: true,
         last_input_time: std::time::Instant::now(),
-        messages: (0..100)
-            .flat_map(|i| {
-                vec![
-                    Message {
-                        author: "krayon".to_string(),
-                        content: format!("Message {}", i + 1),
-                    },
-                    Message {
-                        author: "".to_string(),
-                        content: "".to_string(),
-                    },
-                ]
-            })
-            .collect(),
-        message_state: TableState::default().with_selected(0),
+        messages: Vec::new(),
+        scroll_offset: 0,
+        should_auto_scroll: false,
         cursor_position: 0,
     };
 
@@ -93,36 +81,21 @@ struct App {
     cursor_visible: bool,
     last_input_time: std::time::Instant,
     messages: Vec<Message>,
-    message_state: TableState,
+    scroll_offset: usize,
+    should_auto_scroll: bool,
 }
 
 impl App {
-    fn next_message(&mut self) {
-        let i = match self.message_state.selected() {
-            Some(i) => {
-                if i >= self.messages.len() - 1 {
-                    self.messages.len() - 1
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.message_state.select(Some(i));
+    fn scroll_down(&mut self) {
+        if self.scroll_offset < self.messages.len() {
+            self.scroll_offset += 1;
+        }
     }
 
-    fn previous_message(&mut self) {
-        let i = match self.message_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    0
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.message_state.select(Some(i));
+    fn scroll_up(&mut self) {
+        if self.scroll_offset > 0 {
+            self.scroll_offset -= 1;
+        }
     }
 
     fn move_cursor_left(&mut self) {
@@ -299,37 +272,64 @@ impl App {
             bottom: 0,
         }));
 
-        let message_rows = self.messages.iter().map(|message| {
-            let formatted_message = if !message.author.is_empty() {
-                format!("{}: ", message.author)
-            } else {
-                String::new()
-            };
+        // Create lines for messages with proper wrapping, starting from scroll offset
+        let mut all_lines = Vec::new();
+        let mut is_first_message = true;
+        
+        for message in self.messages.iter().skip(self.scroll_offset) {
+            if !message.author.is_empty() {
+                let content = format!("{}: {}", message.author, message.content);
+                
+                // Add spacing before message (except for first message)
+                if !is_first_message {
+                    all_lines.push(Line::from(""));
+                }
+                // Add message line (will wrap automatically)
+                all_lines.push(Line::from(content));
+                is_first_message = false;
+            }
+        }
 
-            Row::new(vec![Cell::from(Line::from(vec![
-                Span::styled(formatted_message, Style::default().bold()),
-                Span::from(message.content.clone()),
-            ]))])
-        });
-
-        let messages_table =
-            Table::new(message_rows, [Constraint::Fill(1)]).block(Block::new().padding(Padding {
+        let messages_widget = Paragraph::new(all_lines)
+            .wrap(Wrap { trim: true })
+            .block(Block::new().padding(Padding {
                 left: 1,
                 right: 1,
                 top: 1,
                 bottom: 1,
             }));
 
+        // Handle auto-scroll if flag is set
+        if self.should_auto_scroll {
+            // Calculate if messages fill the available area
+            let available_height = content_area.height.saturating_sub(2) as usize; // Account for padding
+            let total_lines = self.messages.iter().enumerate().map(|(i, msg)| {
+                if msg.author.is_empty() { 0 } else { 
+                    // First message: 1 line, others: 2 lines (message + spacing)
+                    if i == 0 { 1 } else { 2 }
+                }
+            }).sum::<usize>();
+            
+            if total_lines > available_height {
+                // Check if we're already at the bottom (within 1 message of the end)
+                let max_scroll_offset = self.messages.len().saturating_sub(available_height / 2);
+                if self.scroll_offset >= max_scroll_offset.saturating_sub(2) {
+                    // We're near the bottom, so auto-scroll
+                    self.scroll_offset = self.messages.len().saturating_sub(available_height);
+                }
+            }
+            self.should_auto_scroll = false;
+        }
+
         frame.render_widget(Block::new().bg(BG_PRIMARY), main_area);
-        frame.render_stateful_widget(
-            messages_table,
+        frame.render_widget(
+            messages_widget,
             Rect {
                 x: content_area.x,
                 y: content_area.y,
                 width: content_area.width,
                 height: content_area.height,
             },
-            &mut self.message_state,
         );
         frame.render_widget(
             input_paragraph,
@@ -348,10 +348,10 @@ impl App {
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) -> io::Result<()> {
         match mouse_event.kind {
             MouseEventKind::ScrollDown => {
-                self.next_message();
+                self.scroll_down();
             }
             MouseEventKind::ScrollUp => {
-                self.previous_message();
+                self.scroll_up();
             }
             _ => {}
         }
@@ -443,6 +443,24 @@ impl App {
                     self.move_cursor_to_end();
                 } else {
                     self.move_cursor_right();
+                }
+                self.last_input_time = std::time::Instant::now();
+            }
+            KeyCode::Enter => {
+                // Add message to messages list if not empty
+                if !self.input_text.trim().is_empty() {
+                    self.messages.push(Message {
+                        author: "krayon".to_string(),
+                        content: self.input_text.clone(),
+                    });
+
+                    
+                    // Clear input field and reset cursor
+                    self.input_text.clear();
+                    self.cursor_position = 0;
+                    
+                    // Set flag to check if we should auto-scroll
+                    self.should_auto_scroll = true;
                 }
                 self.last_input_time = std::time::Instant::now();
             }
