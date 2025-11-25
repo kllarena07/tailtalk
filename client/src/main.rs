@@ -87,14 +87,17 @@ struct App {
 
 impl App {
     fn scroll_down(&mut self) {
-        if self.scroll_offset < self.messages.len() {
-            self.scroll_offset += 1;
+        // Don't scroll past the end of messages
+        // Maximum scroll offset is when we can still see at least one message
+        if self.scroll_offset > 0 {
+            self.scroll_offset -= 1;
         }
     }
 
     fn scroll_up(&mut self) {
-        if self.scroll_offset > 0 {
-            self.scroll_offset -= 1;
+        // Don't scroll past the beginning (can't skip more messages than we have - 1)
+        if self.scroll_offset < self.messages.len().saturating_sub(1) {
+            self.scroll_offset += 1;
         }
     }
 
