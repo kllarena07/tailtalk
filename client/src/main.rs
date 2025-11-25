@@ -3,7 +3,7 @@ use crate::cli_args::Args;
 use clap::Parser;
 
 mod app;
-use crate::app::{App, Event, Message};
+use crate::app::{App, Event};
 
 mod events;
 use crate::events::{handle_input_events, handle_server_messages, run_cursor_blink_thread};
@@ -98,10 +98,7 @@ fn main() -> io::Result<()> {
     // Add any initial messages from server
     for msg in initial_messages {
         if !msg.trim().is_empty() {
-            app.messages.push(Message {
-                author: "System".to_string(),
-                content: msg.trim().to_string(),
-            });
+            app.add_message("System".to_string(), msg.trim().to_string());
         }
     }
 

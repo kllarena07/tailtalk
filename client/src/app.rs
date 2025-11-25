@@ -40,6 +40,10 @@ pub enum Event {
 }
 
 impl App {
+    pub fn add_message(&mut self, author: String, content: String) {
+        self.messages.push(Message { author, content });
+    }
+
     fn scroll_down(&mut self) {
         // Don't scroll past the end of messages
         // Maximum scroll offset is when we can still see at least one message
