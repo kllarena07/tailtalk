@@ -362,10 +362,12 @@ impl App {
         use crossterm::event::KeyModifiers;
 
         match key_event.code {
-            KeyCode::Char('q') => {
-                self.running = false;
-            }
             KeyCode::Char(c) => {
+                // Handle Ctrl+C for quit
+                if c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.running = false;
+                    return Ok(());
+                }
                 // Handle Ctrl+U for clear line (Win+Delete in your case)
                 if c == 'u' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
                     // Delete everything before cursor
