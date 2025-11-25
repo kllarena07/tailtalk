@@ -295,18 +295,17 @@ impl App {
                 self.running = false;
             }
             KeyCode::Char(c) => {
-                self.input_text.push(c);
+                // Handle Ctrl+U for clear line (Win+Delete in your case)
+                if c == 'u' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    self.input_text.clear();
+                } else {
+                    self.input_text.push(c);
+                }
                 self.last_input_time = std::time::Instant::now();
             }
             KeyCode::Backspace => {
-                self.input_text.pop();
-                self.last_input_time = std::time::Instant::now();
-            }
-            KeyCode::Delete => {
-                // Handle Alt/Meta + Delete (platform dependent)
-                if key_event.modifiers.contains(KeyModifiers::ALT)
-                    || key_event.modifiers.contains(KeyModifiers::META)
-                {
+                // Handle Alt+Backspace for delete word
+                if key_event.modifiers.contains(KeyModifiers::ALT) {
                     // Delete word logic - find previous space and delete from there
                     if let Some(last_space_pos) = self.input_text.rfind(' ') {
                         self.input_text.truncate(last_space_pos);
@@ -314,9 +313,14 @@ impl App {
                         self.input_text.clear();
                     }
                 } else {
-                    // Regular delete - remove next character (simplified for end of string)
-                    // Since cursor is at end, this does nothing
+                    // Regular backspace - delete previous character
+                    self.input_text.pop();
                 }
+                self.last_input_time = std::time::Instant::now();
+            }
+            KeyCode::Delete => {
+                // Regular delete - remove next character (simplified for end of string)
+                // Since cursor is at end, this does nothing
                 self.last_input_time = std::time::Instant::now();
             }
             _ => {}
