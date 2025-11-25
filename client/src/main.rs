@@ -592,7 +592,17 @@ impl App {
             KeyCode::Enter => {
                 // Send message to server if not empty
                 if !self.input_text.trim().is_empty() {
+                    let message_content = self.input_text.clone();
                     let message = format!("{}\n", self.input_text);
+                    
+                    // Add message to local UI immediately for better UX
+                    self.messages.push(Message {
+                        author: self.username.clone(),
+                        content: message_content.clone(),
+                    });
+                    self.should_auto_scroll = true;
+                    
+                    // Send to server in background
                     match self.write_stream.lock() {
                         Ok(mut stream) => {
                             match stream.write_all(message.as_bytes()) {
