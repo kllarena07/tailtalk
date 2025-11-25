@@ -1,9 +1,9 @@
 use crossterm::event::KeyCode;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Layout},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
 };
 use std::{io, sync::mpsc, thread, time::Duration};
@@ -113,19 +113,20 @@ impl App {
         ])
         .areas(info_area);
 
-        let input_paragraph = Paragraph::new(Text::from("hello"))
-            .block(
-                Block::new()
-                    .borders(Borders::LEFT)
-                    .border_type(BorderType::Thick)
-                    .padding(Padding {
-                        left: 1,
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                    }),
-            )
-            .wrap(Wrap { trim: true });
+        let input_paragraph =
+            Paragraph::new(vec![Line::from(""), Line::from("hello"), Line::from("")])
+                .block(
+                    Block::new()
+                        .borders(Borders::LEFT)
+                        .border_type(BorderType::Thick)
+                        .padding(Padding {
+                            left: 1,
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                        }),
+                )
+                .wrap(Wrap { trim: true });
 
         let input_info = Paragraph::new(vec![
             Line::from(""),
@@ -139,9 +140,43 @@ impl App {
             bottom: 0,
         }));
 
+        let message_1 = Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled("krayon: ", Style::default().bold()),
+                Span::from("hello world"),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("krayon: ", Style::default().bold()),
+                Span::from("hello world"),
+            ]),
+        ])
+        .block(Block::new().padding(Padding {
+            left: 1,
+            right: 1,
+            top: 1,
+            bottom: 1,
+        }));
+
         frame.render_widget(Block::new().bg(BG_PRIMARY), main_area);
-        frame.render_widget(Block::new().borders(Borders::ALL), content_area);
-        frame.render_widget(input_paragraph, input_area_1);
+        frame.render_widget(
+            message_1,
+            Rect {
+                x: content_area.x,
+                y: content_area.y,
+                width: content_area.width,
+                height: content_area.height - 1,
+            },
+        );
+        frame.render_widget(
+            input_paragraph,
+            Rect {
+                x: input_area_1.x + 1,
+                y: input_area_1.y,
+                width: input_area_1.width,
+                height: input_area_1.height,
+            },
+        );
         frame.render_widget(input_info, input_area_2);
         frame.render_widget(version_control, vc_area);
         frame.render_widget(conn_info, conn_area);
