@@ -8,6 +8,99 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 
+
+
+fn calculate_scroll_to_bottom(messages: &[Message], available_height: u16, available_width: u16) -> usize {
+    if messages.is_empty() {
+        return 0;
+    }
+    
+    let mut total_lines = 0;
+    let mut messages_from_bottom = 0;
+    
+    // Work backwards from the last message to find how many fit
+    for message in messages.iter().rev() {
+        if message.author.is_empty() {
+            continue;
+        }
+        
+        let formatted_text = format!("{}: {}", message.author, message.content);
+        let text_width = formatted_text.len();
+        let message_lines = if text_width == 0 {
+            1
+        } else {
+            (text_width + available_width as usize - 1) / available_width as usize
+        };
+        
+        // Add spacing (except for last message)
+        let lines_with_spacing = if messages_from_bottom > 0 {
+            message_lines + 1
+        } else {
+            message_lines
+        };
+        
+        // Check if adding this message exceeds available height
+        if total_lines + lines_with_spacing > available_height as usize {
+            break;
+        }
+        
+        total_lines += lines_with_spacing;
+        messages_from_bottom += 1;
+    }
+    
+    // Return scroll offset to show these messages
+    messages.len() - messages_from_bottom
+}
+
+fn is_near_bottom(
+    messages: &[Message], 
+    scroll_offset: usize, 
+    available_height: u16, 
+    available_width: u16,
+    threshold: usize
+) -> bool {
+    if messages.is_empty() {
+        return true;
+    }
+    
+    // Calculate how many lines are visible from current scroll position
+    let mut visible_lines = 0;
+    let max_visible_lines = available_height as usize;
+    
+    for message in messages.iter().skip(scroll_offset) {
+        if message.author.is_empty() {
+            continue;
+        }
+        
+        let formatted_text = format!("{}: {}", message.author, message.content);
+        let text_width = formatted_text.len();
+        let message_lines = if text_width == 0 {
+            1
+        } else {
+            (text_width + available_width as usize - 1) / available_width as usize
+        };
+        
+        // Add spacing (except for first visible message)
+        let lines_with_spacing = if visible_lines > 0 {
+            message_lines + 1
+        } else {
+            message_lines
+        };
+        
+        visible_lines += lines_with_spacing;
+        if visible_lines >= max_visible_lines {
+            break;
+        }
+    }
+    
+    // Calculate how many messages are hidden below
+    let messages_hidden_below = messages.len().saturating_sub(scroll_offset);
+    let max_visible_messages = (max_visible_lines / 2).max(1); // Rough estimate
+    
+    // Auto-scroll if we're within threshold messages from the bottom
+    messages_hidden_below <= max_visible_messages + threshold
+}
+
 pub struct Message {
     pub author: String,
     pub content: String,
@@ -179,34 +272,14 @@ impl App {
 
         // Handle auto-scroll if flag is set
         if self.should_auto_scroll {
-            // Calculate if messages fill the available area
-            let available_height = content_area.height.saturating_sub(2) as usize; // Account for padding
-            let total_lines = self
-                .messages
-                .iter()
-                .enumerate()
-                .map(|(i, msg)| {
-                    if msg.author.is_empty() {
-                        0
-                    } else {
-                        // First message: 1 line, others: 2 lines (message + spacing)
-                        if i == 0 {
-                            1
-                        } else {
-                            2
-                        }
-                    }
-                })
-                .sum::<usize>();
-
-            if total_lines > available_height {
-                // Check if we're already at the bottom (within 1 message of the end)
-                let max_scroll_offset = self.messages.len().saturating_sub(available_height / 2);
-                if self.scroll_offset >= max_scroll_offset.saturating_sub(2) {
-                    // We're near the bottom, so auto-scroll
-                    self.scroll_offset = self.messages.len().saturating_sub(available_height);
-                }
+            let available_width = content_area.width.saturating_sub(2); // Account for padding
+            let available_height = content_area.height.saturating_sub(2);
+            
+            // Only auto-scroll if user is near the bottom
+            if is_near_bottom(&self.messages, self.scroll_offset, available_height, available_width, 2) {
+                self.scroll_offset = calculate_scroll_to_bottom(&self.messages, available_height, available_width);
             }
+            
             self.should_auto_scroll = false;
         }
 
