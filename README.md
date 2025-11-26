@@ -15,9 +15,30 @@ This repository is a small little experiment that decides to expand on this netc
 
 https://github.com/user-attachments/assets/34b2399a-606d-4d51-9d3d-206ffa279c5a
 
-## How to Setup
+## Setup
+NOTE: Rust must be must be installed on your machine. You can can find out how to do that [here](https://rust-lang.org/tools/install/).
 
-WIP.
+### Running the Server
+1. Clone this repository: `git clone https://github.com/kllarena07/tcptalk`
+2. Run the server
+```
+cd server/
+cargo run --release
+```
+### Running the Client
+1. Clone this repository: `git clone https://github.com/kllarena07/tcptalk`
+2. Run the setup script
+```
+source ./setup_client.sh
+```
+3. Use the `tcptalk` command
+
+The `tcptalk` command takes an argument of [username] [ip_address] [-p port]. This command will not be exported globally unless you add it to your PATH.
+
+Examples:
+- `tcptalk alice` connects to 0.0.0.0:2133
+- `tcptalk alice 127.0.0.1` connects to 127.0.0.1:2133
+- `tcptalk alice 192.168.1.100 -p 9090` connects to 192.168.1.100:9090
 
 ## 👾 Bugs or vulnerabilities
 
