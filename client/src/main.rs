@@ -8,6 +8,7 @@ use crate::app::{App, Event};
 mod events;
 use crate::events::{handle_input_events, handle_server_messages, run_cursor_blink_thread};
 
+mod connected_users_widget;
 mod input_widget;
 
 use std::{
@@ -54,14 +55,12 @@ fn main() -> io::Result<()> {
             break;
         }
         let response = String::from_utf8_lossy(&buf[..n]);
-        if response.contains("Username cannot be empty") 
+        if response.contains("Username cannot be empty")
             || response.contains("Username 'System' is reserved")
-            || response.contains("Username is already taken") {
+            || response.contains("Username is already taken")
+        {
             eprintln!("Server rejected username: {}", response.trim());
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                response.trim(),
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, response.trim()));
         }
         initial_messages.push(response.to_string());
 
