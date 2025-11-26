@@ -1,10 +1,11 @@
-use crossterm::event::{KeyCode, KeyModifiers, MouseEvent, MouseEventKind};
+use crate::input_widget::InputWidget;
+use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Padding, Paragraph, Wrap},
+    widgets::{Block, Padding, Paragraph, Wrap},
 };
 
 pub struct Message {
@@ -20,10 +21,7 @@ use std::{
 
 pub struct App {
     pub running: bool,
-    pub input_text: String,
-    pub cursor_position: usize,
-    pub cursor_visible: bool,
-    pub last_input_time: std::time::Instant,
+    pub input_widget: InputWidget,
     pub messages: Vec<Message>,
     pub scroll_offset: usize,
     pub should_auto_scroll: bool,
@@ -40,6 +38,19 @@ pub enum Event {
 }
 
 impl App {
+    pub fn new(username: String, server_ip: String, write_stream: Arc<Mutex<TcpStream>>) -> Self {
+        Self {
+            running: true,
+            input_widget: InputWidget::new(username.clone()),
+            messages: Vec::new(),
+            scroll_offset: 0,
+            should_auto_scroll: false,
+            username,
+            server_ip,
+            write_stream,
+        }
+    }
+
     pub fn add_message(&mut self, author: String, content: String) {
         self.messages.push(Message { author, content });
     }
@@ -59,99 +70,6 @@ impl App {
         }
     }
 
-    fn move_cursor_left(&mut self) {
-        if self.cursor_position > 0 {
-            self.cursor_position -= 1;
-        }
-    }
-
-    fn move_cursor_right(&mut self) {
-        if self.cursor_position < self.input_text.len() {
-            self.cursor_position += 1;
-        }
-    }
-
-    fn move_cursor_to_start(&mut self) {
-        self.cursor_position = 0;
-    }
-
-    fn move_cursor_to_end(&mut self) {
-        self.cursor_position = self.input_text.len();
-    }
-
-    fn move_cursor_word_left(&mut self) {
-        if self.cursor_position == 0 {
-            return;
-        }
-
-        // Find the start of the previous word, treating punctuation as boundaries
-        let text_before_cursor = &self.input_text[..self.cursor_position];
-        let trimmed = text_before_cursor.trim_end_matches(|c: char| {
-            c.is_whitespace()
-                || c == '\''
-                || c == '"'
-                || c == ';'
-                || c == ','
-                || c == '.'
-                || c == '!'
-                || c == '?'
-        });
-
-        if let Some(last_boundary_pos) = trimmed.rfind(|c: char| {
-            c.is_whitespace()
-                || c == '\''
-                || c == '"'
-                || c == ';'
-                || c == ','
-                || c == '.'
-                || c == '!'
-                || c == '?'
-        }) {
-            self.cursor_position = last_boundary_pos + 1;
-        } else {
-            self.cursor_position = 0;
-        }
-    }
-
-    fn move_cursor_word_right(&mut self) {
-        if self.cursor_position >= self.input_text.len() {
-            return;
-        }
-
-        // Find the start of the next word, treating punctuation as boundaries
-        let text_after_cursor = &self.input_text[self.cursor_position..];
-        if let Some(next_boundary_pos) = text_after_cursor.find(|c: char| {
-            c.is_whitespace()
-                || c == '\''
-                || c == '"'
-                || c == ';'
-                || c == ','
-                || c == '.'
-                || c == '!'
-                || c == '?'
-        }) {
-            let new_pos = self.cursor_position + next_boundary_pos;
-            // Skip any boundaries to get to the next word
-            let remaining = &self.input_text[new_pos..];
-            if let Some(non_boundary_pos) = remaining.find(|c: char| {
-                !(c.is_whitespace()
-                    || c == '\''
-                    || c == '"'
-                    || c == ';'
-                    || c == ','
-                    || c == '.'
-                    || c == '!'
-                    || c == '?')
-            }) {
-                self.cursor_position = new_pos + non_boundary_pos;
-            } else {
-                self.cursor_position = self.input_text.len();
-            }
-        } else {
-            self.cursor_position = self.input_text.len();
-        }
-    }
-
     pub fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
@@ -163,13 +81,7 @@ impl App {
                 Event::Input(key_event) => self.handle_key_event(key_event)?,
                 Event::Mouse(mouse_event) => self.handle_mouse_event(mouse_event)?,
                 Event::CursorBlink => {
-                    // Only blink cursor if user hasn't typed in the last 1 second
-                    if self.last_input_time.elapsed().as_secs() >= 1 {
-                        self.cursor_visible = !self.cursor_visible;
-                    } else {
-                        // Keep cursor visible when typing
-                        self.cursor_visible = true;
-                    }
+                    self.input_widget.update_cursor_blink();
                 }
                 Event::ServerMessage(message) => {
                     // Parse server message and add to messages
@@ -206,36 +118,9 @@ impl App {
         let [main_area, info_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(horizontal_area);
 
-        let before_cursor = &self.input_text[..self.cursor_position];
-
-        // Create styled spans for cursor with different color
-        let mut input_spans = vec![Span::from(before_cursor.to_string())];
-
-        // Add cursor - replace the character at cursor position if there is one
-        if self.cursor_position < self.input_text.len() {
-            // Replace the character at cursor position with cursor
-            let char_at_cursor = &self.input_text[self.cursor_position..self.cursor_position + 1];
-            if self.cursor_visible {
-                input_spans.push(Span::styled(
-                    char_at_cursor,
-                    Style::default().fg(Color::Cyan).bg(Color::Rgb(0, 100, 100)),
-                ));
-            } else {
-                input_spans.push(Span::from(char_at_cursor));
-            }
-            input_spans.push(Span::from(&self.input_text[self.cursor_position + 1..]));
-        } else {
-            // Cursor at end of line
-            if self.cursor_visible {
-                input_spans.push(Span::styled("█", Style::default().fg(Color::Cyan)));
-            }
-        }
-
-        // Estimate lines needed (account for padding and borders)
+        // Calculate input widget height
         let available_width = main_area.width.saturating_sub(4);
-        let text_width = self.input_text.len() as u16 + 1; // +1 for cursor
-        let lines_needed = std::cmp::max(1, (text_width + available_width - 1) / available_width);
-        let input_area_height = std::cmp::max(3, lines_needed); // Minimum 3 lines for input area
+        let input_area_height = self.input_widget.calculate_height(available_width);
         let total_input_height = input_area_height + 3; // Input area + info area
 
         let [content_area, input_parent] =
@@ -263,35 +148,6 @@ impl App {
             Constraint::Fill(1),
         ])
         .areas(info_area);
-
-        let input_paragraph = Paragraph::new(vec![Line::from(input_spans)])
-            .block(
-                Block::new()
-                    .borders(Borders::LEFT)
-                    .border_type(BorderType::Thick)
-                    .padding(Padding {
-                        left: 1,
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                    }),
-            )
-            .wrap(Wrap { trim: true });
-
-        let input_info = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(
-                Span::from(format!("Sending message as {}", self.username))
-                    .style(Style::default().bold()),
-            ),
-            Line::from(""),
-        ])
-        .block(Block::new().padding(Padding {
-            left: 1,
-            right: 0,
-            top: 0,
-            bottom: 0,
-        }));
 
         // Create lines for messages with proper wrapping, starting from scroll offset
         let mut all_lines = Vec::new();
@@ -360,16 +216,8 @@ impl App {
                 height: content_area.height,
             },
         );
-        frame.render_widget(
-            input_paragraph,
-            Rect {
-                x: input_area_1.x + 1,
-                y: input_area_1.y,
-                width: input_area_1.width.saturating_sub(1),
-                height: input_area_1.height,
-            },
-        );
-        frame.render_widget(input_info, input_area_2);
+        // Render input widget
+        self.input_widget.render(frame, input_area_1, input_area_2);
         frame.render_widget(version_control, vc_area);
         frame.render_widget(conn_info, conn_area);
     }
@@ -388,144 +236,45 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> io::Result<()> {
-        match key_event.code {
-            KeyCode::Char(c) => {
-                let ctrl_c_quit = c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL);
-                let win_del = c == 'u' && key_event.modifiers.contains(KeyModifiers::CONTROL);
-                let ctrl_lft = c == 'a' && key_event.modifiers.contains(KeyModifiers::CONTROL);
-                let ctrl_rht = c == 'e' && key_event.modifiers.contains(KeyModifiers::CONTROL);
-                let alt_lft = c == 'f' && key_event.modifiers.contains(KeyModifiers::ALT);
-                let alt_rht = c == 'b' && key_event.modifiers.contains(KeyModifiers::ALT);
+        let should_quit = self.input_widget.handle_key_event(key_event)?;
+        if should_quit {
+            self.running = false;
+            return Ok(());
+        }
 
-                if ctrl_c_quit {
-                    self.running = false;
-                    return Ok(());
-                } else if win_del {
-                    self.input_text.drain(0..self.cursor_position);
-                    self.cursor_position = 0;
-                } else if ctrl_lft {
-                    self.move_cursor_to_start();
-                } else if ctrl_rht {
-                    self.move_cursor_to_end();
-                } else if alt_lft {
-                    self.move_cursor_word_right();
-                } else if alt_rht {
-                    self.move_cursor_word_left();
-                } else {
-                    self.input_text.insert(self.cursor_position, c);
-                    self.cursor_position += 1;
-                }
+        if key_event.code == KeyCode::Enter {
+            // Send message to server if not empty
+            if !self.input_widget.is_empty() {
+                let message_content = self.input_widget.get_text();
+                let message = format!("{}\n", message_content);
 
-                self.last_input_time = std::time::Instant::now();
-            }
-            KeyCode::Backspace => {
-                // Handle Alt+Backspace for delete word
-                if key_event.modifiers.contains(KeyModifiers::ALT) {
-                    // Delete word logic - find previous boundary and delete from there
-                    if self.cursor_position > 0 {
-                        let text_before_cursor = &self.input_text[..self.cursor_position];
-                        let trimmed = text_before_cursor.trim_end_matches(|c: char| {
-                            c.is_whitespace()
-                                || c == '\''
-                                || c == '"'
-                                || c == ';'
-                                || c == ','
-                                || c == '.'
-                                || c == '!'
-                                || c == '?'
-                        });
+                // Add message to local UI immediately for better UX
+                self.add_message(self.username.clone(), message_content.clone());
+                self.should_auto_scroll = true;
 
-                        if let Some(last_boundary_pos) = trimmed.rfind(|c: char| {
-                            c.is_whitespace()
-                                || c == '\''
-                                || c == '"'
-                                || c == ';'
-                                || c == ','
-                                || c == '.'
-                                || c == '!'
-                                || c == '?'
-                        }) {
-                            self.input_text
-                                .drain(last_boundary_pos + 1..self.cursor_position);
-                            self.cursor_position = last_boundary_pos + 1;
-                        } else {
-                            self.input_text.drain(0..self.cursor_position);
-                            self.cursor_position = 0;
-                        }
-                    }
-                } else {
-                    // Regular backspace - delete previous character
-                    if self.cursor_position > 0 {
-                        self.input_text.remove(self.cursor_position - 1);
-                        self.cursor_position -= 1;
-                    }
-                }
-                self.last_input_time = std::time::Instant::now();
-            }
-            KeyCode::Delete => {
-                // Delete character at cursor position
-                if self.cursor_position < self.input_text.len() {
-                    self.input_text.remove(self.cursor_position);
-                }
-                self.last_input_time = std::time::Instant::now();
-            }
-            KeyCode::Left => {
-                if key_event.modifiers.contains(KeyModifiers::ALT) {
-                    self.move_cursor_word_left();
-                } else if key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.move_cursor_to_start();
-                } else {
-                    self.move_cursor_left();
-                }
-                self.last_input_time = std::time::Instant::now();
-            }
-            KeyCode::Right => {
-                if key_event.modifiers.contains(KeyModifiers::ALT) {
-                    self.move_cursor_word_right();
-                } else if key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                    self.move_cursor_to_end();
-                } else {
-                    self.move_cursor_right();
-                }
-                self.last_input_time = std::time::Instant::now();
-            }
-            KeyCode::Enter => {
-                // Send message to server if not empty
-                if !self.input_text.trim().is_empty() {
-                    let message_content = self.input_text.clone();
-                    let message = format!("{}\n", self.input_text);
-
-                    // Add message to local UI immediately for better UX
-                    self.add_message(self.username.clone(), message_content.clone());
-                    self.should_auto_scroll = true;
-
-                    // Send to server in background
-                    let send_result = {
-                        let lock_result = self.write_stream.lock();
-                        match lock_result {
-                            Ok(mut stream) => match stream.write_all(message.as_bytes()) {
-                                Ok(_) => match stream.flush() {
-                                    Ok(_) => Ok(()),
-                                    Err(e) => Err(format!("Failed to send message: {}", e)),
-                                },
-                                Err(e) => Err(format!("Failed to write to server: {}", e)),
+                // Send to server in background
+                let send_result = {
+                    let lock_result = self.write_stream.lock();
+                    match lock_result {
+                        Ok(mut stream) => match stream.write_all(message.as_bytes()) {
+                            Ok(_) => match stream.flush() {
+                                Ok(_) => Ok(()),
+                                Err(e) => Err(format!("Failed to send message: {}", e)),
                             },
-                            Err(e) => Err(format!("Failed to lock stream: {}", e)),
-                        }
-                    };
-
-                    if let Err(error_msg) = send_result {
-                        self.add_message("System".to_string(), error_msg);
-                        self.should_auto_scroll = true;
+                            Err(e) => Err(format!("Failed to write to server: {}", e)),
+                        },
+                        Err(e) => Err(format!("Failed to lock stream: {}", e)),
                     }
+                };
 
-                    // Clear input field and reset cursor
-                    self.input_text.clear();
-                    self.cursor_position = 0;
+                if let Err(error_msg) = send_result {
+                    self.add_message("System".to_string(), error_msg);
+                    self.should_auto_scroll = true;
                 }
-                self.last_input_time = std::time::Instant::now();
+
+                // Clear input field
+                self.input_widget.clear();
             }
-            _ => {}
         }
 
         Ok(())

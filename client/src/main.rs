@@ -8,6 +8,8 @@ use crate::app::{App, Event};
 mod events;
 use crate::events::{handle_input_events, handle_server_messages, run_cursor_blink_thread};
 
+mod input_widget;
+
 use std::{
     io::{self, Read, Write},
     net::TcpStream,
@@ -81,19 +83,11 @@ fn main() -> io::Result<()> {
         .expect("Failed to clone stream for reading");
     let write_stream = Arc::new(Mutex::new(stream));
 
-    let mut app = App {
-        running: true,
-        input_text: String::new(),
-        cursor_visible: true,
-        last_input_time: std::time::Instant::now(),
-        messages: Vec::new(),
-        scroll_offset: 0,
-        should_auto_scroll: false,
-        cursor_position: 0,
-        username: args.username.clone(),
-        server_ip: args.ip.clone(),
-        write_stream: Arc::clone(&write_stream),
-    };
+    let mut app = App::new(
+        args.username.clone(),
+        args.ip.clone(),
+        Arc::clone(&write_stream),
+    );
 
     // Add any initial messages from server
     for msg in initial_messages {
