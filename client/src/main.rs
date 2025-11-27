@@ -1,6 +1,7 @@
 mod cli_args;
 use crate::cli_args::Args;
 use clap::Parser;
+use serde_json;
 
 mod app;
 use crate::app::{App, Event};
@@ -90,10 +91,24 @@ fn main() -> io::Result<()> {
         Arc::clone(&write_stream),
     );
 
-    // Add any initial messages from server
+    // Add welcome message since server doesn't send join message to sender
+    app.add_message("System".to_string(), format!("Welcome to the chat! You are connected as {}", args.username));
+    
+    // Add any initial messages from server (filter out USER_LIST messages)
     for msg in initial_messages {
-        if !msg.trim().is_empty() {
-            app.add_message("System".to_string(), msg.trim().to_string());
+        let msg = msg.trim();
+        if !msg.is_empty() {
+            // Check if this is a user list update and filter it out
+            if msg.starts_with("USER_LIST:") {
+                // Parse and update user list, but don't display as message
+                if let Some(json_part) = msg.strip_prefix("USER_LIST:") {
+                    if let Ok(users) = serde_json::from_str::<Vec<String>>(json_part) {
+                        app.connected_users_widget.set_users(users);
+                    }
+                }
+            } else {
+                app.add_message("System".to_string(), msg.to_string());
+            }
         }
     }
 
