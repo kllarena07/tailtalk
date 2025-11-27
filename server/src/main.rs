@@ -1,11 +1,11 @@
+use indexmap::IndexMap;
+use serde_json;
 use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
 };
-use serde_json;
-use indexmap::IndexMap;
 
 struct Client {
     stream: TcpStream,
@@ -47,11 +47,19 @@ fn broadcast_message(
 
 fn broadcast_user_list(connections: &Arc<Mutex<IndexMap<SocketAddr, Client>>>) -> io::Result<()> {
     let conn_map = connections.lock().unwrap();
-    let user_list: Vec<String> = conn_map.values().map(|client| client.username.clone()).collect();
+    let user_list: Vec<String> = conn_map
+        .values()
+        .map(|client| client.username.clone())
+        .collect();
     drop(conn_map);
 
     let user_list_json = format!("USER_LIST:{}\n", serde_json::to_string(&user_list).unwrap());
-    broadcast_message(user_list_json.as_bytes(), "0.0.0.0:0".parse().unwrap(), connections, true)
+    broadcast_message(
+        user_list_json.as_bytes(),
+        "0.0.0.0:0".parse().unwrap(),
+        connections,
+        true,
+    )
 }
 
 fn handle_user_list_request(
@@ -59,7 +67,10 @@ fn handle_user_list_request(
     connections: &Arc<Mutex<IndexMap<SocketAddr, Client>>>,
 ) -> io::Result<()> {
     let conn_map = connections.lock().unwrap();
-    let user_list: Vec<String> = conn_map.values().map(|client| client.username.clone()).collect();
+    let user_list: Vec<String> = conn_map
+        .values()
+        .map(|client| client.username.clone())
+        .collect();
     drop(conn_map);
 
     let user_list_json = format!("USER_LIST:{}\n", serde_json::to_string(&user_list).unwrap());
@@ -68,7 +79,10 @@ fn handle_user_list_request(
     Ok(())
 }
 
-fn get_username(mut stream: &TcpStream, connections: &Arc<Mutex<IndexMap<SocketAddr, Client>>>) -> io::Result<String> {
+fn get_username(
+    mut stream: &TcpStream,
+    connections: &Arc<Mutex<IndexMap<SocketAddr, Client>>>,
+) -> io::Result<String> {
     loop {
         stream.write_all(b"Enter your username: ")?;
         stream.flush()?;
@@ -91,7 +105,9 @@ fn get_username(mut stream: &TcpStream, connections: &Arc<Mutex<IndexMap<SocketA
         }
 
         let conn_map = connections.lock().unwrap();
-        let username_taken = conn_map.values().any(|client| client.username.eq_ignore_ascii_case(&username));
+        let username_taken = conn_map
+            .values()
+            .any(|client| client.username.eq_ignore_ascii_case(&username));
         drop(conn_map);
 
         if username_taken {
@@ -126,7 +142,7 @@ fn handle_client(
 
     let join_message = format!("{} has joined the chat\n", username);
     broadcast_message(join_message.as_bytes(), addr, &connections, false)?; // Don't send to sender
-    
+
     // Broadcast updated user list to all clients (including the new one)
     broadcast_user_list(&connections)?;
 
@@ -138,13 +154,13 @@ fn handle_client(
         }
 
         let message = String::from_utf8_lossy(&buf[..n]);
-        
+
         // Check for special commands
         if message.trim() == "GET_USERS" {
             handle_user_list_request(stream.try_clone()?, &connections)?;
             continue;
         }
-        
+
         let formatted_msg = format!("{}: {}", username, message);
 
         std::io::stdout().write_all(formatted_msg.as_bytes())?;
@@ -155,14 +171,14 @@ fn handle_client(
 
     let leave_message = format!("{} has left the chat\n", username);
     broadcast_message(leave_message.as_bytes(), addr, &connections, false)?;
-    
+
     // Remove client first, then broadcast updated user list
     let mut conn_map = connections.lock().unwrap();
     conn_map.shift_remove(&addr);
     let total = conn_map.len();
     drop(conn_map);
     println!("{} disconnected from {} (Total: {})", username, addr, total);
-    
+
     broadcast_user_list(&connections)?;
 
     Ok(())
@@ -174,7 +190,8 @@ fn main() -> io::Result<()> {
     println!("Binding to port {}", address);
 
     let listener = TcpListener::bind(address)?;
-    let connections: Arc<Mutex<IndexMap<SocketAddr, Client>>> = Arc::new(Mutex::new(IndexMap::new()));
+    let connections: Arc<Mutex<IndexMap<SocketAddr, Client>>> =
+        Arc::new(Mutex::new(IndexMap::new()));
 
     for connection in listener.incoming() {
         match connection {
