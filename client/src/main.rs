@@ -1,6 +1,7 @@
 mod cli_args;
 use crate::cli_args::Args;
 use clap::Parser;
+use serde_json;
 
 mod app;
 use crate::app::{App, Event};
@@ -8,6 +9,7 @@ use crate::app::{App, Event};
 mod events;
 use crate::events::{handle_input_events, handle_server_messages, run_cursor_blink_thread};
 
+mod connected_users_widget;
 mod input_widget;
 
 use std::{
@@ -54,14 +56,12 @@ fn main() -> io::Result<()> {
             break;
         }
         let response = String::from_utf8_lossy(&buf[..n]);
-        if response.contains("Username cannot be empty") 
+        if response.contains("Username cannot be empty")
             || response.contains("Username 'System' is reserved")
-            || response.contains("Username is already taken") {
+            || response.contains("Username is already taken")
+        {
             eprintln!("Server rejected username: {}", response.trim());
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                response.trim(),
-            ));
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, response.trim()));
         }
         initial_messages.push(response.to_string());
 
@@ -91,10 +91,24 @@ fn main() -> io::Result<()> {
         Arc::clone(&write_stream),
     );
 
-    // Add any initial messages from server
+    // Add welcome message since server doesn't send join message to sender
+    app.add_message("System".to_string(), format!("Welcome to the chat! You are connected as {}", args.username));
+    
+    // Add any initial messages from server (filter out USER_LIST messages)
     for msg in initial_messages {
-        if !msg.trim().is_empty() {
-            app.add_message("System".to_string(), msg.trim().to_string());
+        let msg = msg.trim();
+        if !msg.is_empty() {
+            // Check if this is a user list update and filter it out
+            if msg.starts_with("USER_LIST:") {
+                // Parse and update user list, but don't display as message
+                if let Some(json_part) = msg.strip_prefix("USER_LIST:") {
+                    if let Ok(users) = serde_json::from_str::<Vec<String>>(json_part) {
+                        app.connected_users_widget.set_users(users);
+                    }
+                }
+            } else {
+                app.add_message("System".to_string(), msg.to_string());
+            }
         }
     }
 
