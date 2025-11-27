@@ -21,6 +21,7 @@ Note: this repository is not built on top of `netcat`
 **A Couple Things to Note**
 - Rust must be must be installed on your machine. You can can find out how to do that [here](https://rust-lang.org/tools/install/).
 - This installation setup process was written that your platform is MacOS/Linux. If you are Windows, please consider using WSL or the installation may be different.
+- The server/client connection is NOT encrypted.
 
 ### Running the Server
 1. Clone this repository: `git clone https://github.com/kllarena07/tcptalk`
